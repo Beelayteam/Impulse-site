@@ -9,13 +9,63 @@ const downloadStatus = document.getElementById("downloadStatus");
 
 // No theme toggle (dark-only)
 
-// Download button (demo)
+// Download button — fetch file from URL (needs CORS enabled on host)
+async function downloadFileFromUrl(url, suggestedName, redirectAfter = '/') {
+  if (!url) return;
+  try {
+    if (downloadStatus) downloadStatus.textContent = 'Starting download...';
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Network response was not ok');
+
+    const blob = await res.blob();
+    // try to get filename from headers if not provided
+    let filename = suggestedName;
+    const cd = res.headers.get('content-disposition');
+    if (!filename && cd) {
+      const m = /filename\*=UTF-8''(.+)$/.exec(cd) || /filename="?([^\";]+)"?/.exec(cd);
+      if (m) filename = decodeURIComponent(m[1]);
+    }
+    if (!filename) filename = 'download.bin';
+
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // revoke after a short delay to ensure download started
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+
+    if (downloadStatus) downloadStatus.textContent = 'Download started';
+
+    // Redirect back to site (user requested immediate redirect once install/download starts)
+    if (redirectAfter) {
+      try {
+        // slight delay to let browser start saving
+        setTimeout(() => { window.location.href = redirectAfter; }, 600);
+      } catch (e) {
+        console.warn('Redirect failed', e);
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    if (downloadStatus) downloadStatus.textContent = 'Download failed';
+  }
+}
+
 if (downloadBtn) {
-  downloadBtn.addEventListener("click", () => {
-    if (downloadStatus) downloadStatus.textContent = "Загрузка началась...";
-    setTimeout(() => {
-      if (downloadStatus) downloadStatus.textContent = "Файл готов к скачиванию.";
-    }, 1200);
+  downloadBtn.addEventListener('click', (e) => {
+    const url = downloadBtn.getAttribute('data-file-url');
+    const name = downloadBtn.getAttribute('data-file-name');
+    const redirect = downloadBtn.getAttribute('data-redirect') || '/';
+    // If you prefer a direct link (no JS) you can set <a href> to the file URL instead.
+    // Try fetch/download first. If fetch fails (CORS/401), fallback to opening raw link in new tab.
+    downloadFileFromUrl(url, name, redirect).catch(() => {
+      // fallback: open raw link and redirect immediately
+      window.open(url, '_blank');
+      window.location.href = redirect;
+    });
   });
 }
 
